@@ -11,7 +11,7 @@
   const dialog=document.getElementById('detail-dialog');
   const dialogContent=document.getElementById('dialog-content');
   const toastEl=document.getElementById('toast');
-  let state=STORE.fresh(), analysis=null, draft='', selectedRoutine='family-rules', dictionarySearch='', dictionaryFilter='all', evidenceSearch='', evidenceFilter='all', momentSearch='', importMode='merge', toastTimer, swappedShoes=false;
+  let state=STORE.fresh(), analysis=null, draft='', editingMoment=false, activeProcessingStep='moment', processingScrollY=0, processingScrollGuardUntil=0, selectedRoutine='family-rules', dictionarySearch='', dictionaryFilter='all', evidenceSearch='', evidenceFilter='all', momentSearch='', importMode='merge', toastTimer, swappedShoes=false;
 
   const ROLE_THEMES={
     neutral:{guardian:'Guardian',sibling:'Sibling',self:'You'},
@@ -61,19 +61,55 @@
   }
 
   function renderHome(){
-    return `<div class="home-hero"><div class="hero-intro"><div class="hero-overline"><span class="tiny-star">✳</span><span class="eyebrow">UNDERSTAND THE REACTION, KEEP YOUR AGENCY</span></div><h1>Find the thread.<br>Not the fault.</h1><p>An old warning can feel current. Explore five connected parts: control routine, subroutine, learned expectation, protective response, and present-day reality indicators. No journal required.</p></div><div class="hero-aside"><span class="hero-numeral">5 LINKED FIELDS</span><h3>Five fields. One connected atlas.</h3><p>Trace the old dynamic, understand the protection it taught, test today's evidence, and choose a proportionate response.</p></div></div>
-    <div class="grid-2"><section class="card"><div class="card-head"><div><div class="overline">QUICK PROCESSING</div><h2>What's weighing on you?</h2></div>${pill('No account required','green')}</div>
-      <div class="input-surface"><textarea id="moment-input" aria-label="Describe your current emotion or situation" placeholder="What happened? Or what thought keeps coming back? One sentence is enough…">${e(draft)}</textarea><div class="input-footer"><span class="subtle">You can start messy. There's no right way to phrase it.</span><button class="button" data-action="analyze">Untangle this <span aria-hidden="true">↗</span></button></div></div>
-      <div class="sample-row">${KNOWLEDGE.examples.map(ex=>`<button class="sample-chip" data-action="use-example" data-id="${e(ex.id)}">${e(ex.label)}</button>`).join('')}</div><div class="privacy-line"><span aria-hidden="true">⌁</span> Nothing is saved unless you choose to save it.</div>
-    </section><aside class="stack"><div class="card soft"><div class="mini-kicker">THE DIFFERENCE THAT MATTERS</div><h3>A familiar alarm isn't always a present danger.</h3><p class="subtle">And sometimes the present behaviour really is concerning. A comparison should be able to recognize either outcome—or admit it does not know.</p></div><div class="card"><div class="mini-kicker">BUILT-IN DICTIONARIES</div><div class="metric-row" style="grid-template-columns:1fr 1fr 1fr;margin-top:12px;margin-bottom:12px"><div><strong style="font-size:2rem">${routineList().length}</strong><div class="subtle">Routines</div></div><div><strong style="font-size:2rem">${subList().length}</strong><div class="subtle">Subroutines</div></div><div><strong style="font-size:2rem">${EVIDENCE.entries.length}</strong><div class="subtle">Reality signals</div></div></div><p class="subtle">${KNOWLEDGE.subroutines.length} source-linked subroutines. “Untangle this” dynamically ranks these same paths from your description; no legacy catalog has been added.</p><p class="subtle" style="margin-top:7px">Explore the <a class="linkish" href="#atlas">atlas</a> and <a class="linkish" href="#evidence">present-day evidence dictionary</a>.</p></div><div class="card"><div class="mini-kicker">ROLE-AGNOSTIC EXAMPLES</div><div class="cast-mini">${['guardian','sibling','self'].map(id=>`<div><small>${e(id)}</small><strong>${e(roleName(id))}</strong></div>`).join('')}</div><a class="button small outline" href="#roles">Customize your cast</a></div></aside></div>
-    ${analysis?`<section class="result-section analysis-panel">${renderAnalysis()}</section>`:''}
-    <div class="footnote">Clearframe offers prompts for reflection, not diagnoses or mind-reading. If someone is threatening, coercing, or repeatedly crossing a boundary, you don't have to explain that behaviour away.</div>`;
+    if(analysis&&!editingMoment)return `<section class="result-section analysis-panel">${renderAnalysis()}</section>`;
+    return `<section class="card home-entry" aria-labelledby="home-prompt-title">
+      <h1 id="home-prompt-title">What's weighing on you?</h1>
+      <div class="input-surface"><textarea id="moment-input" aria-label="Describe your current emotion or situation" placeholder="What happened? Or what thought keeps coming back? One sentence is enough…">${e(draft)}</textarea><div class="input-footer"><span class="subtle">You can start messy. There's no right way to phrase it.</span><div class="moment-input-actions">${editingMoment?'<button class="button outline" data-action="cancel-edit">Cancel</button>':''}<button class="button" data-action="analyze">Untangle this</button></div></div></div>
+    </section>`;
+  }
+
+  function processingStepStart(id,title,aside='',headerDetail=''){
+    const open=activeProcessingStep===id;
+    return `<section class="card processing-step ${open?'is-open':''}" data-processing-step="${e(id)}">
+      <div class="processing-heading ${headerDetail?'with-detail':''}"><div class="processing-heading-row"><h3 class="processing-heading-title"><button type="button" class="processing-heading-button" data-action="open-processing-step" data-id="${e(id)}" aria-expanded="${open}" aria-controls="processing-body-${e(id)}"><span class="processing-title">${e(title)}</span><span class="processing-chevron" aria-hidden="true">⌄</span></button></h3>${aside}</div>${headerDetail}</div>
+      <div class="processing-body" id="processing-body-${e(id)}" ${open?'':'hidden'}>`;
+  }
+  const processingStepEnd=()=>'</div></section>';
+
+  function openProcessingStep(id,align=false){
+    const steps=[...document.querySelectorAll('[data-processing-step]')];
+    const target=steps.find(step=>step.dataset.processingStep===id);
+    if(!target)return;
+    const heading=target.querySelector('.processing-heading');
+    const priorTop=heading.getBoundingClientRect().top;
+    for(const step of steps){
+      const open=step===target;
+      step.classList.toggle('is-open',open);
+      step.querySelector('.processing-body').hidden=!open;
+      step.querySelector('.processing-heading-button').setAttribute('aria-expanded',String(open));
+    }
+    activeProcessingStep=id;
+    processingScrollGuardUntil=Date.now()+(align?850:320);
+    if(align){heading.scrollIntoView({behavior:'instant',block:'start'});}
+    else{
+      // Collapsing earlier content must not jerk the newly reached heading away.
+      const displacement=heading.getBoundingClientRect().top-priorTop;
+      if(Math.abs(displacement)>1)window.scrollBy({top:displacement,behavior:'instant'});
+    }
+    processingScrollY=window.scrollY;
+  }
+  function advanceProcessingStep(direction){
+    const steps=[...document.querySelectorAll('[data-processing-step]')];
+    const index=steps.findIndex(step=>step.dataset.processingStep===activeProcessingStep);
+    const target=steps[index+direction];
+    if(index>=0&&target)openProcessingStep(target.dataset.processingStep,true);
   }
 
   function newAnalysis(text){
+    activeProcessingStep='moment';
     const {reflection,reflections,matchTier,groupedMatches}=MATCHER.match(text,routineList(),subList(),state.customRoutines.map(r=>r.id));
     const highest=groupedMatches.flatMap(group=>group.matches).sort((a,b)=>b.percent-a.percent||b.rank-a.rank).slice(0,3);
-    return {id:null,text,top:unique(highest.map(item=>item.hub)),selectedSubs:highest.map(item=>item.id),
+    return {id:null,text,top:unique(highest.map(item=>item.hub)),selectedSubs:highest.map(item=>item.id),recentlyIncludedSubroutine:highest[0]?.id||null,
       reflection,reflections,matchTier,groupedMatches,evidenceMatches:{},showAllEvidence:false,next:'',createdAt:new Date().toISOString()};
   }
   function signalCard(item,a){
@@ -82,24 +118,68 @@
   }
   function renderMatchOverview(a){
     const fresh=Array.isArray(a.groupedMatches)?a:MATCHER.match(a.text,routineList(),subList(),state.customRoutines.map(r=>r.id));
-    const groups=fresh.groupedMatches||[];
-    const totalMatches=groups.reduce((sum,group)=>sum+group.matches.length,0);
+    const groups=(fresh.groupedMatches||[]).map(group=>({...group,matches:[...group.matches]}));
+    const alreadyShown=new Set(groups.flatMap(group=>group.matches.map(match=>match.id)));
+    for(const id of a.selectedSubs||[]){
+      if(alreadyShown.has(id)||!sub(id))continue;
+      const linked=owners(id);
+      const owner=linked.find(r=>groups.some(group=>group.id===r.id))||linked[0];
+      if(!owner)continue;
+      let group=groups.find(group=>group.id===owner.id);
+      if(!group){group={id:owner.id,matches:[]};groups.push(group);}
+      group.matches.push({id,percent:0,manual:true});
+      alreadyShown.add(id);
+    }
     const groupRows=groups.map((group,index)=>{
       const r=routine(group.id);
-      return `<details class="disclosure" style="margin-bottom:9px" ${index===0?'open':''}>
-        <summary><strong>${e(r?.name||group.id)}</strong> <span class="counter" style="margin-left:7px">${group.totalPercent}% combined · ${group.matches.length} ${group.matches.length===1?'match':'matches'}</span></summary>
+      return `<details class="disclosure" data-match-group="${e(group.id)}" style="margin-bottom:9px" ${index===0?'open':''}>
+        <summary><strong>${e(r?.name||group.id)}</strong></summary>
         <div class="compact-stack" style="margin-top:12px">${group.matches.map(entry=>{
           const item=sub(entry.id);if(!item)return '';
           const included=a.selectedSubs.includes(entry.id);
-          return `<div class="hypothesis-row" style="padding:11px 14px"><div class="summary-bar" style="align-items:center"><strong>${e(item.name)}</strong><div class="tag-list" style="margin:0;align-items:center">${pill(`${entry.percent}% match`,entry.percent>=45?'green':'quiet')}${included?pill('Included','green'):`<button class="button small outline" data-action="add-sub" data-id="${e(entry.id)}" aria-label="Add ${e(item.name)} to comparison">+ Add</button>`}</div></div></div>`;
+          return `<div class="hypothesis-row" data-match-sub="${e(entry.id)}" style="padding:11px 14px"><div class="summary-bar" style="align-items:center"><strong>${e(item.name)}</strong><div class="tag-list" style="margin:0;align-items:center">${entry.manual?pill('Added by you','quiet'):pill(`${entry.percent}% match`,entry.percent>=45?'green':'quiet')}${included?`<button class="button small outline subroutine-action remove-sub-button" data-action="remove-sub" data-id="${e(entry.id)}" aria-label="Remove ${e(item.name)} from comparison">− Remove</button>`:`<button class="button small outline subroutine-action" data-action="add-sub" data-id="${e(entry.id)}" aria-label="Add ${e(item.name)} to comparison">+ Add</button>`}</div></div></div>`;
         }).join('')}</div></details>`;
     }).join('');
-    return `<div style="margin-bottom:15px"><div class="mini-kicker" style="margin-bottom:9px">MATCHES ≥ 1% · GROUPED BY CONTROL ROUTINE</div>
-      ${groups.length?groupRows:'<div class="empty-state">No subroutines matched at 1% or higher. Try describing another detail of the situation.</div>'}
-      <p class="help-text" style="margin-top:10px">${totalMatches} matching subroutines in ${groups.length} control routines. Group totals add the individual match percentages and may exceed 100%; they are relevance scores, not psychological certainty.</p></div>`;
+    return `<div style="margin-bottom:15px">${groups.length?groupRows:'<div class="empty-state">No subroutines matched at 1% or higher. Try describing another detail of the situation.</div>'}</div>`;
+  }
+  function renderRecentIncludedSubroutine(a){
+    const grouped=Array.isArray(a.groupedMatches)?a.groupedMatches:MATCHER.match(a.text,routineList(),subList(),state.customRoutines.map(r=>r.id)).groupedMatches;
+    const ranked=grouped.flatMap(group=>group.matches||[]).sort((x,y)=>y.percent-x.percent||y.rank-x.rank);
+    const included=new Set(a.selectedSubs||[]);
+    const recentId=included.has(a.recentlyIncludedSubroutine)?a.recentlyIncludedSubroutine:ranked.find(match=>included.has(match.id))?.id||ranked[0]?.id;
+    const item=sub(recentId);
+    return `<div class="recent-included-box" aria-live="polite" aria-atomic="true">
+      <div class="recent-included-heading"><span>Recently Included subroutine:</span><strong>${e(item?.name||'No matching subroutine')}</strong></div>
+      <div class="recent-included-fields">
+        <div class="recent-included-field"><span>Expectation Trigger:</span><p>${e(item?.learned||'Not described yet.')}</p></div>
+        <div class="recent-included-field"><span>Protective Response:</span><p>${e(item?.protective||'Not described yet.')}</p></div>
+      </div>
+    </div>`;
+  }
+  function changeIncludedSubroutine(id,include,fromReview=false){
+    if(!analysis||analysis.selectedSubs.includes(id)===include)return;
+    const scrollPosition=window.scrollY;
+    const openMatchGroups=[...document.querySelectorAll('[data-match-group][open]')].map(group=>group.dataset.matchGroup);
+    if(include){
+      analysis.selectedSubs.push(id);
+      analysis.recentlyIncludedSubroutine=id;
+      const hub=analysis.groupedMatches?.find(group=>group.matches.some(item=>item.id===id))?.id||owners(id)[0]?.id;
+      if(hub&&!analysis.top.includes(hub))analysis.top.push(hub);
+    }else{
+      analysis.selectedSubs=analysis.selectedSubs.filter(selectedId=>selectedId!==id);
+    }
+    analysis.reflection=null;
+    analysis.reflections=[];
+    render();
+    document.querySelectorAll('[data-match-group]').forEach(group=>{group.open=openMatchGroups.includes(group.dataset.matchGroup);});
+    const newlyIncludedRow=fromReview&&include?[...document.querySelectorAll('[data-match-sub]')].find(row=>row.dataset.matchSub===id):null;
+    if(newlyIncludedRow){
+      newlyIncludedRow.closest('[data-match-group]').open=true;
+      newlyIncludedRow.scrollIntoView({behavior:'instant',block:'center'});
+    }else window.scrollTo({top:scrollPosition,behavior:'instant'});
   }
   function renderAnalysis(){
-    const a=analysis, top=(a.top||[]).map(routine).filter(Boolean), subs=(a.selectedSubs||[]).map(sub).filter(Boolean);
+    const a=analysis, subs=(a.selectedSubs||[]).map(sub).filter(Boolean);
     const frames=Array.isArray(a.reflections)&&a.reflections.length?a.reflections.filter(frame=>a.selectedSubs.includes(frame.id)):a.reflection&&a.selectedSubs.includes(a.reflection.id)?[a.reflection]:[];
     const mirrorMoment=frames.some(frame=>frame.title==='The rule from the other side');
     const result=REASONER.evaluate(a,subList(),EVIDENCE.entries);
@@ -109,29 +189,29 @@
     const statusText={undetermined:'Not enough present-day evidence',different:'Older expectation challenged',concerning:'Current concern recognized',mixed:'Mixed present-day evidence'};
     const statusColor={undetermined:'quiet',different:'green',concerning:'rose',mixed:'gold'};
     const disposition={untested:'Not tested',supported:'Current behaviour resembles the old pattern',challenged:'Present behaviour challenges the old prediction',mixed:'Conflicting evidence'};
-    return `<div class="page-title-row" style="margin-top:22px"><div><div class="eyebrow">YOUR COMPARISON</div><h2>Compare the old rule with today's reality.</h2><p class="page-lede">Nothing here requires a diary. Mark only observable behaviours you recognize. Unmarked statements remain unknown, not false.</p></div>${pill('Transparent local reasoning','green')}</div>
-      <div class="card" style="margin-bottom:17px"><div class="card-head"><h3>1 · The moment</h3>${pill('Your own words')}</div><div class="quote-block">“${e(a.text)}”</div><p class="test-hint" style="margin-top:12px">A description may include facts, fears, and assumptions together. Text matching identifies possible topics; it does not verify intentions.</p></div>
-      <div class="card" style="margin-bottom:17px"><div class="card-head"><h3>2 · Matching subroutines</h3><span class="counter">All matches ≥ 1%</span></div>
+    return `<div class="processing-accordion">
+      ${processingStepStart('moment','1 · The moment',`<button type="button" class="edit-moment-button" data-action="edit-moment" aria-label="Edit this moment" title="Edit this moment"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4Z"/></svg></button>`)}
+      <div class="quote-block">“${e(a.text)}”</div>${processingStepEnd()}
+      ${processingStepStart('matches','2 · Matching subroutines','',renderRecentIncludedSubroutine(a))}
         ${renderMatchOverview(a)}
-        <div class="tag-cloud">${top.map(t=>`<span class="pill green">${e(t.name)} <button class="linkish" style="margin-left:7px;text-decoration:none" data-action="remove-routine" data-id="${e(t.id)}" aria-label="Remove ${e(t.name)}">×</button></span>`).join('')}</div>
-        <div style="margin-top:12px"><select id="analysis-routine-add" aria-label="Add a control routine"><option value="">+ Correct or add a control routine…</option>${routineList().filter(r=>!a.top.includes(r.id)).map(r=>`<option value="${e(r.id)}">${e(r.name)}</option>`).join('')}</select></div>
-        <details class="disclosure" style="margin-top:15px"><summary>Review possible learned expectations and protective responses (${subs.length})</summary><div class="compact-stack" style="margin-top:12px">${subs.map(s=>`<label class="assumption-row"><input type="checkbox" data-assumption="${e(s.id)}" checked><span><strong>${e(s.name)}</strong><small><b>Possible learned expectation:</b> ${e(s.learned)}</small><small><b>Possible protective response:</b> ${e(s.protective||'Not described yet.')}</small></span></label>`).join('')}</div>${others.length?`<div class="tag-cloud" style="margin-top:11px">${others.map(id=>`<button class="pill interactive" data-action="add-sub" data-id="${e(id)}">+ ${e(sub(id)?.name||id)}</button>`).join('')}</div>`:''}</details></div>
-      <div class="card" style="margin-bottom:17px"><div class="card-head"><div><div class="overline">THE PRESENT-DAY DICTIONARY</div><h3>3 · What have you actually observed?</h3></div>${pill(`${result.matched.length} matched`,result.matched.length?'green':'quiet')}</div>
-        <div class="swap-shoes-row"><button type="button" class="button small outline" data-action="swap-shoes" aria-pressed="${swappedShoes}" aria-label="Swap Shoes: reverse the pronouns in these statements">⇄ Swap Shoes</button><span class="subtle">${swappedShoes?'Reading from the other perspective.':'Reading from your perspective.'} The evidence and result stay the same.</span></div>
+        <details class="disclosure" style="margin-top:15px"><summary>Review possible learned expectations and protective responses (${subs.length})</summary><div class="compact-stack" style="margin-top:12px">${subs.map(s=>`<label class="assumption-row"><input type="checkbox" data-assumption="${e(s.id)}" checked><span><strong>${e(s.name)}</strong><small><b>Possible learned expectation:</b> ${e(s.learned)}</small><small><b>Possible protective response:</b> ${e(s.protective||'Not described yet.')}</small></span></label>`).join('')}</div>${others.length?`<div class="tag-cloud" style="margin-top:11px">${others.map(id=>`<button class="pill interactive" data-action="add-sub" data-from-review="true" data-id="${e(id)}">+ ${e(sub(id)?.name||id)}</button>`).join('')}</div>`:''}</details>${processingStepEnd()}
+      ${processingStepStart('observations','3 · What have you actually observed?')}
+        <div class="swap-shoes-row"><button type="button" class="button small outline" data-action="swap-shoes" aria-pressed="${swappedShoes}" aria-label="Swap Shoes: reverse the pronouns in these statements">⇄ Swap Shoes</button></div>
         ${mirrorMoment?'<p class="test-hint" style="margin-bottom:13px"><strong>Try the other side:</strong> You described a demand you may have placed on another person. Select Swap Shoes to read the same boundaries and expectations from the position of the person receiving that demand. This is a fairness check, not a verdict.</p>':''}
-        <p class="subtle" style="margin-bottom:16px">These are prewritten examples, not claims about your family or partner. Tap a statement only if it matches your experience with the person in this situation.</p>
         ${shown.length?`<div class="signal-columns"><div class="signal-column risk"><div class="signal-column-head"><span class="signal-key rose-key"></span><h4>Signs the old pattern may still be active</h4></div>${shown.filter(x=>x.kind==='repeats').map(s=>signalCard(s,a)).join('')||'<p class="subtle">No matching entries in this selection.</p>'}</div><div class="signal-column repair"><div class="signal-column-head"><span class="signal-key green-key"></span><h4>Signs this relationship may be different</h4></div>${shown.filter(x=>x.kind==='differs').map(s=>signalCard(s,a)).join('')||'<p class="subtle">No matching entries in this selection.</p>'}</div></div>`:`<div class="empty-state">No present-day indicators are linked to the currently selected subroutines. Select a routine and a subroutine to compare observations.</div>`}
         ${selection.additional.length?`<button class="button small outline" style="margin-top:15px" data-action="toggle-more-evidence">${a.showAllEvidence?'Show fewer comparisons':`Show ${selection.additional.length} more relevant signals`}</button>`:''}
-        <p class="help-text" style="margin-top:12px"><strong>Important:</strong> Not selecting a statement does not mean the opposite happened. This is a recognition tool, not a checklist where silence counts as proof.</p>
-      </div>
-      <section class="card" style="margin-bottom:17px"><div class="card-head"><h3>4 · What does the comparison actually show?</h3>${pill(result.urgent?'Specific safety concern':statusText[result.status],result.urgent?'rose':statusColor[result.status])}</div><div class="reason-stats"><div><strong>${result.counts.similar}</strong><span>Observed similarities</span></div><div><strong>${result.counts.different}</strong><span>Observed differences</span></div><div><strong>${result.counts.untested}</strong><span>Subroutines not tested</span></div></div>
+      ${processingStepEnd()}
+      ${processingStepStart('comparison','4 · What does the comparison actually show?',pill(result.urgent?'Specific safety concern':statusText[result.status],result.urgent?'rose':statusColor[result.status]))}
+        <div class="reason-stats"><div><strong>${result.counts.similar}</strong><span>Observed similarities</span></div><div><strong>${result.counts.different}</strong><span>Observed differences</span></div><div><strong>${result.counts.untested}</strong><span>Subroutines not tested</span></div></div>
         <div class="result-synthesis" style="margin-top:17px"><div class="mini-kicker">EVIDENCE-BASED SYNTHESIS</div><p>${e(result.conclusion)}</p></div>
         ${result.matched.length?`<div class="evidence-trail"><div class="mini-kicker">WHY THE RESULT CHANGED</div>${result.matched.map(item=>`<div class="trail-row"><span class="pill ${item.kind==='repeats'?'rose':'green'}">${item.kind==='repeats'?'Resembles old pattern':'Differs from old pattern'}</span><span>${e(item.statement)}</span></div>`).join('')}</div>`:`<div class="callout-quiet" style="margin-top:15px"><strong>No behavioural evidence was selected.</strong> Clearframe cannot justify a reassuring conclusion or a concerning one from the sentence alone.</div>`}
         <details class="disclosure" style="margin-top:17px"><summary>Compare each possible learned expectation with selected observations (${result.bySub.length})</summary><div class="compact-stack" style="margin-top:12px">${result.bySub.map(item=>`<div class="hypothesis-row"><div class="summary-bar"><strong>${e(item.title)}</strong>${pill(disposition[item.verdict],item.verdict==='supported'?'rose':item.verdict==='challenged'?'green':item.verdict==='mixed'?'gold':'quiet')}</div><p class="subtle" style="margin-top:8px"><strong>Possible learned expectation:</strong> ${e(item.learned)}</p><p class="subtle" style="margin-top:7px"><strong>Possible protective response:</strong> ${e(item.protective||'Not described yet.')}</p><p class="test-hint" style="margin-top:7px">${item.support.length?`${item.support.length} matching concern signal(s). `:''}${item.counter.length?`${item.counter.length} contrasting signal(s).`:''}${!item.support.length&&!item.counter.length?'No specific matching indicator selected for this subroutine.':''}</p>${item.verdict==='challenged'?`<p class="subtle" style="margin-top:7px">Possible updated rule: ${e(item.grounded)}</p>`:''}</div>`).join('')}</div></details>
-      </section>
+      ${processingStepEnd()}
+      ${processingStepStart('save','Keep this comparison?','<span class="processing-save-note">Optional · Nothing auto-saves</span>')}
       <div class="result-next"><div class="mini-kicker">PROPORTIONATE NEXT STEP</div><p>${e(result.action)}</p></div>
       <div class="warning-box" style="margin-top:13px"><strong>Limits:</strong> The engine compares indicators you recognize; it cannot independently verify facts or intentions. A high-risk behaviour is never cancelled by a kind gesture somewhere else.</div>
-      <div class="card" style="margin-top:20px"><div class="card-head"><h3>Keep this comparison? <span class="subtle" style="font-weight:450">Optional</span></h3><span class="pill quiet">Nothing auto-saves</span></div><div class="form-field"><label for="analysis-next">My own next step (optional note)</label><input id="analysis-next" value="${e(a.next)}" placeholder="My choice—not part of the calculation"></div><div class="form-actions"><button class="button" data-action="save-moment">${a.id?'Update saved moment':'Save this comparison'}</button><button class="button ghost" data-action="clear-analysis">Start fresh</button></div></div>`;
+      <div class="processing-save-form"><div class="form-field"><label for="analysis-next">My own next step (optional note)</label><input id="analysis-next" value="${e(a.next)}" placeholder="My choice—not part of the calculation"></div><div class="form-actions"><button class="button" data-action="save-moment">${a.id?'Update saved moment':'Save this comparison'}</button><button class="button ghost" data-action="clear-analysis">Start fresh</button></div></div>${processingStepEnd()}
+      </div>`;
   }
 
   function atlasSvg(){
@@ -296,13 +376,16 @@
     const action=t.dataset.action,id=t.dataset.id||'';
     if(t.tagName==='BUTTON')ev.preventDefault();
     switch(action){
-      case 'use-example': {const sample=KNOWLEDGE.examples.find(x=>x.id===id);if(sample){draft=sample.text;analysis=null;swappedShoes=false;render();document.getElementById('moment-input')?.focus();}break;}
+      case 'open-processing-step':openProcessingStep(id,true);break;
+      case 'use-example': {const sample=KNOWLEDGE.examples.find(x=>x.id===id);if(sample){draft=sample.text;analysis=null;editingMoment=false;swappedShoes=false;render();document.getElementById('moment-input')?.focus();}break;}
       case 'analyze':{
         const input=document.getElementById('moment-input');if(input)draft=input.value;
         if(draft.trim().length<8){toast('Enter at least one short sentence or thought.');input?.focus();break;}
-        analysis=newAnalysis(draft.trim());swappedShoes=false;render();document.querySelector('.analysis-panel')?.scrollIntoView({behavior:'smooth',block:'start'});break;
+        analysis=newAnalysis(draft.trim());editingMoment=false;swappedShoes=false;render();document.querySelector('.analysis-panel')?.scrollIntoView({behavior:'smooth',block:'start'});break;
       }
-      case 'clear-analysis':analysis=null;draft='';swappedShoes=false;render();window.scrollTo({top:0,behavior:'smooth'});break;
+      case 'edit-moment':if(analysis){draft=analysis.text;editingMoment=true;render();window.scrollTo({top:0,behavior:'smooth'});document.getElementById('moment-input')?.focus({preventScroll:true});}break;
+      case 'cancel-edit':if(analysis){draft=analysis.text;editingMoment=false;render();window.scrollTo({top:0,behavior:'smooth'});}break;
+      case 'clear-analysis':analysis=null;draft='';editingMoment=false;swappedShoes=false;render();window.scrollTo({top:0,behavior:'smooth'});break;
       case 'show-routine':selectedRoutine=id;location.hash='#atlas';break;
       case 'select-routine':selectedRoutine=id;render();document.querySelector('.atlas-inspector')?.scrollIntoView({behavior:'smooth',block:'nearest'});break;
       case 'show-sub':showSub(id);break;
@@ -312,25 +395,13 @@
       case 'add-routine':editRoutine();break;
       case 'apply-role-preset':if(ROLE_THEMES[id]){state.roleTheme={preset:id,aliases:{...ROLE_THEMES[id]}};await persist();render();toast('Theme applied. Your learned-pattern definitions are unchanged.');}break;
       case 'close-dialog':closeModal();break;
-      case 'add-sub':if(analysis&&!analysis.selectedSubs.includes(id)){
-        analysis.selectedSubs.push(id);
-        const hub=analysis.groupedMatches?.find(group=>group.matches.some(item=>item.id===id))?.id||owners(id)[0]?.id;
-        if(hub&&!analysis.top.includes(hub))analysis.top.push(hub);
-        analysis.reflection=null;analysis.reflections=[];render();
-      }break;
-      case 'remove-routine':if(analysis){
-        analysis.top=analysis.top.filter(x=>x!==id);
-        const allowed=new Set(analysis.top.flatMap(rid=>routine(rid)?.subroutineIds||[]));
-        analysis.selectedSubs=analysis.selectedSubs.filter(sid=>allowed.has(sid));
-        analysis.reflection=null;
-        analysis.reflections=[];
-        render();
-      }break;
+      case 'add-sub':changeIncludedSubroutine(id,true,t.dataset.fromReview==='true');break;
+      case 'remove-sub':changeIncludedSubroutine(id,false);break;
       case 'swap-shoes':if(analysis){const y=window.scrollY;swappedShoes=!swappedShoes;render();window.scrollTo(0,y);document.querySelector('[data-action="swap-shoes"]')?.focus({preventScroll:true});}break;
       case 'toggle-evidence':if(analysis){const y=window.scrollY;analysis.evidenceMatches??={};analysis.evidenceMatches[id]=!analysis.evidenceMatches[id];render();window.scrollTo(0,y);}break;
       case 'toggle-more-evidence':if(analysis){const y=window.scrollY;analysis.showAllEvidence=!analysis.showAllEvidence;render();window.scrollTo(0,y);}break;
       case 'try-routine':{
-        const r=routine(id);if(r){draft=roleExample(r.roleExamples?.guardian)||r.summary;analysis=newAnalysis(draft);swappedShoes=false;analysis.top=[id];analysis.selectedSubs=(r.subroutineIds||[]).slice(0,6);analysis.reflection=null;analysis.reflections=[];location.hash='#home';if(route()==='home')render();}break;
+        const r=routine(id);if(r){draft=roleExample(r.roleExamples?.guardian)||r.summary;analysis=newAnalysis(draft);editingMoment=false;swappedShoes=false;analysis.top=[id];analysis.selectedSubs=(r.subroutineIds||[]).slice(0,6);analysis.reflection=null;analysis.reflections=[];location.hash='#home';if(route()==='home')render();}break;
       }
       case 'save-moment':{
         if(!analysis)break;
@@ -351,7 +422,7 @@
             top:legacy?fresh.top:Array.isArray(m.top)?m.top:[],
             selectedSubs:legacy?fresh.selectedSubs:Array.isArray(m.selectedSubs)?m.selectedSubs:[],
             evidenceMatches:legacy?{}:m.evidenceMatches&&typeof m.evidenceMatches==='object'?m.evidenceMatches:{}};
-          draft=m.text||'';swappedShoes=false;location.hash='#home';
+          draft=m.text||'';editingMoment=false;swappedShoes=false;location.hash='#home';
           if(route()==='home')render();window.scrollTo({top:0,behavior:'smooth'});
           if(legacy)toast('Re-matched with V11 subroutines. The saved original remains unchanged until you save again.');
         }
@@ -367,7 +438,7 @@
       case 'export':exportBackup();break;
       case 'import-merge':case 'import-replace':importMode=action==='import-merge'?'merge':'replace';document.getElementById('backup-file')?.click();break;
       case 'erase-data':if(confirm('Permanently erase ALL saved comparisons, role names, dictionary edits, and archived legacy records stored in this browser? Export a backup first if you might need them.')){
-        state=STORE.fresh();analysis=null;await persist();render();toast('Local data erased.');
+        state=STORE.fresh();analysis=null;editingMoment=false;await persist();render();toast('Local data erased.');
       }break;
     }
   });
@@ -392,7 +463,6 @@
       else if(!analysis.selectedSubs.includes(t.dataset.assumption))analysis.selectedSubs.push(t.dataset.assumption);
       render();
     }
-    if(t.id==='analysis-routine-add'&&analysis&&t.value){analysis.top.push(t.value);analysis.selectedSubs=unique([...analysis.selectedSubs,...(routine(t.value)?.subroutineIds||[]).slice(0,3)]);analysis.reflection=null;analysis.reflections=[];render();}
     if(t.id==='dictionary-filter'){dictionaryFilter=t.value;render();}
     if(t.id==='evidence-filter'){evidenceFilter=t.value;render();}
     if(t.id==='backup-file')await importBackup(t.files?.[0]);
@@ -406,6 +476,44 @@
     if(event.key==='Escape')document.getElementById('sidebar').classList.remove('open');
   });
   window.addEventListener('hashchange',render);
+  window.addEventListener('scroll',()=>{
+    const scrollY=window.scrollY;
+    const direction=scrollY-processingScrollY;
+    processingScrollY=scrollY;
+    if(Math.abs(direction)<3||Date.now()<processingScrollGuardUntil||route()!=='home'||!analysis||editingMoment)return;
+    const steps=[...document.querySelectorAll('[data-processing-step]')];
+    const currentIndex=steps.findIndex(step=>step.dataset.processingStep===activeProcessingStep);
+    if(currentIndex<0)return;
+    const adjacent=steps[currentIndex+(direction>0?1:-1)];
+    if(!adjacent)return;
+    const heading=adjacent.querySelector('.processing-heading');
+    const rect=heading.getBoundingClientRect();
+    // A new heading approaching the top becomes the active, expanded section.
+    // Scrolling backward works the same way; only one body stays expanded.
+    if(direction>0&&rect.top<=145&&rect.bottom>16)openProcessingStep(adjacent.dataset.processingStep);
+    if(direction<0&&rect.top>=0&&rect.top<=155)openProcessingStep(adjacent.dataset.processingStep);
+  },{passive:true});
+  // Wheel and touch gestures can reach the page's scroll limit before a
+  // collapsed next section's heading reaches the top of the viewport.
+  function atProcessingEdge(direction){
+    if(Date.now()<processingScrollGuardUntil||route()!=='home'||!analysis||editingMoment)return false;
+    return direction>0?window.scrollY>=document.documentElement.scrollHeight-window.innerHeight-18:window.scrollY<=18;
+  }
+  window.addEventListener('wheel',event=>{
+    if(Math.abs(event.deltaY)<12)return;
+    const direction=event.deltaY>0?1:-1;
+    if(atProcessingEdge(direction))advanceProcessingStep(direction);
+  },{passive:true});
+  let processingTouchStartY=null;
+  window.addEventListener('touchstart',event=>{processingTouchStartY=event.touches[0]?.clientY??null;},{passive:true});
+  window.addEventListener('touchend',event=>{
+    if(processingTouchStartY==null)return;
+    const amount=processingTouchStartY-(event.changedTouches[0]?.clientY??processingTouchStartY);
+    processingTouchStartY=null;
+    if(Math.abs(amount)<35)return;
+    const direction=amount>0?1:-1;
+    if(atProcessingEdge(direction))advanceProcessingStep(direction);
+  },{passive:true});
 
   async function start(){
     try{state=await STORE.get();}catch(error){state=STORE.fresh();toast('Storage unavailable. Use JSON export for backups.');}

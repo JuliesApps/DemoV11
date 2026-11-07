@@ -5,7 +5,7 @@ This ZIP is a **ready-to-publish static website**. It needs no npm, build proces
 ## Put V11 on GitHub Pages
 
 1. Create a new repository at GitHub (for example `clearframe-v11`). A public repository is simplest for a public Pages website.
-2. Extract `clearframe-v11-github-pages.zip` on your computer.
+2. Extract `clearframe-v11-manual-matches-github-pages.zip` on your computer.
 3. In the new repository, choose **Add file → Upload files**. Upload the **contents** of the extracted folder, including `index.html`, `sw.js`, `manifest.webmanifest`, all `.js`, `.css` and icons. Do not upload the ZIP as a single file, and do not place everything in an extra nested folder.
 4. Commit the uploaded files to the `main` branch.
 5. Open the repository's **Settings → Pages**. Under **Build and deployment**, choose **Deploy from a branch**, select `main` and `/(root)`, then save.
@@ -14,7 +14,7 @@ This ZIP is a **ready-to-publish static website**. It needs no npm, build proces
 
 ### Confirm it is the right build
 
-The home screen must show **V11 · 15 chapters mapped** and the counts **29 routines / 177 subroutines / 357 reality signals**. Verify the **Book 1 source map** has 16 sections. Test the **Process an emotion** workflow: enter a situation, confirm the matches at or above 1% are grouped by control routine and ordered by combined score, select an observation in Step 3, and tap **Swap Shoes** twice. The pronouns should reverse and return while the selected indicator and synthesis remain unchanged.
+The home screen must show the **What's weighing on you?** input. Enter a sentence and select **Untangle this**. The input should disappear and **1 · The moment** should be the first expanded section, with plain text and no keyword highlights. Select any other main heading: the previous section should collapse, its heading remain available, and the new one should expand. Scrolling down should likewise advance through the sections. Use the pencil beside **1 · The moment** to reopen the original sentence; **Cancel** should restore the result. Check that matches at or above 1% are grouped by control routine. In **2 · Matching subroutines**, the sticky header should show the highest-matching subroutine's name, Expectation Trigger, and Protective Response. Each matched subroutine has either **+ Add** or **− Remove**; both buttons should have equal width. Clicking Add should select it and update the sticky summary; clicking Remove should deselect it and restore the Add button. Expand **Review possible learned expectations and protective responses** and select a grey suggestion that was not scored in the original matches. It should appear inside the matching groups under its control routine, labeled **Added by you**, and the page should stay in Step 2. The old control-routine dropdown and removable green bubbles should be absent. Select an observation in Step 3 and tap **Swap Shoes** twice: the pronouns should reverse and return while the selected indicator and synthesis remain unchanged.
 
 To test offline use, **first visit online** so the service worker caches the assets, then disconnect and reopen the installed app. The first offline visit cannot work before the cache is installed.
 
